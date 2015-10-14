@@ -1,9 +1,14 @@
-import cStringIO as StringIO
+import sys
+
+if sys.version_info.major < 3:
+    import cStringIO as StringIO
+else:
+    import io as StringIO
+
 import logging
 import numpy as np
 import os
 import struct
-import sys
 import tempfile
 
 
@@ -16,6 +21,10 @@ def get_binary_representations_info(filename):
 
 
 def load_binary_representations(filename, vocabulary=None):
+    """
+    Read vectors from a binary file.
+    """
+    logging.debug('Entered load_binary_representations')
     if vocabulary is not None:
         vocabulary = set(vocabulary)
 
@@ -25,9 +34,10 @@ def load_binary_representations(filename, vocabulary=None):
 
         file_size = os.fstat(words_and_representations.fileno()).st_size
 
-        last_reported_progress = None
+        last_reported_progress = 0
 
         while words_and_representations.tell() < file_size:
+            logging.debug('Starting word')
             word_buffer = StringIO.StringIO()
 
             progress = int(
@@ -42,12 +52,13 @@ def load_binary_representations(filename, vocabulary=None):
                 last_reported_progress = progress
 
             while True:
-                char = words_and_representations.read(1)
+                char = words_and_representations.read(1).decode()
+                logging.debug("Reading character '{}'".format(char))
 
                 if char == ' ' or not char:
                     break
                 else:
-                    word_buffer.write(char)
+                    word_buffer.write(str(char))
 
             word = word_buffer.getvalue().lower().strip()
             word_buffer.close()
