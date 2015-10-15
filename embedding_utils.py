@@ -63,7 +63,7 @@ def load_binary_representations(filename, vocabulary=None):
             word = word_buffer.getvalue().lower().strip()
             word_buffer.close()
 
-            if not word.strip() and words_and_representations.tell() == file_size:
+            if not word and words_and_representations.tell() == file_size:
                 # These were just some dangling whitespace characters at the
                 # end of the file
                 return
