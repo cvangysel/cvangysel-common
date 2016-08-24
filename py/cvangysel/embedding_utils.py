@@ -1,15 +1,15 @@
 import sys
 
-if sys.version_info.major < 3:
-    import cStringIO as StringIO
-else:
-    import io as StringIO
-
 import logging
 import numpy as np
 import os
 import struct
 import tempfile
+
+if sys.version_info.major < 3:
+    import cStringIO as StringIO
+else:
+    import io as StringIO
 
 
 def get_binary_representations_info(filename):
@@ -21,9 +21,7 @@ def get_binary_representations_info(filename):
 
 
 def load_binary_representations(filename, vocabulary=None):
-    """
-    Read vectors from a binary file.
-    """
+    """Read vectors from a binary file."""
     logging.debug('Entered load_binary_representations')
     if vocabulary is not None:
         vocabulary = set(vocabulary)
