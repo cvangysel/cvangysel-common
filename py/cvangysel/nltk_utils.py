@@ -1,7 +1,14 @@
 import collections
 import nltk.probability
 import numpy as np
-from nltk.corpus import stopwords
+
+try:
+    from nltk.corpus import stopwords
+except ImportError:
+    import nltk
+    nltk.download('stopwords')
+
+    from nltk.corpus import stopwords
 
 
 def get_stopwords(include_trectext_syntax=True):
