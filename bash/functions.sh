@@ -1,5 +1,3 @@
-set -e
-
 check_installed() {
     command -v $1 >/dev/null 2>&1 || { echo >&2 "Required tool '$1' is not installed. Aborting."; exit 1; }
 }
@@ -151,3 +149,12 @@ directory_md5sum() {
 
     cd "${CURRENT_DIR}"
 }
+
+if [[ $(contains ${BASH_SOURCE[@]} ${HOME}/.bashrc) == "y" ||
+      $(contains ${BASH_SOURCE[@]} ${HOME}/.bash_profile) == "y" ]]; then
+    # Source'd from .bashrc or .bash_profile.
+    :;
+else
+    # Source'd from script.
+    set -e
+fi
