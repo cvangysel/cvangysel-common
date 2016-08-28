@@ -4,6 +4,11 @@ import subprocess
 import sys
 
 
+def get_formatter():
+    return logging.Formatter(
+        '%(asctime)s [%(threadName)s] [%(name)s] [%(levelname)s]  %(message)s')
+
+
 def configure_logging(args, output_path=None):
     loglevel = args.loglevel if hasattr(args, 'loglevel') else 'INFO'
 
@@ -17,8 +22,7 @@ def configure_logging(args, output_path=None):
     logging.getLogger().setLevel(numeric_log_level)
 
     # Set-up log formatting.
-    log_formatter = logging.Formatter(
-        '%(asctime)s [%(threadName)s] [%(name)s] [%(levelname)s]  %(message)s')
+    log_formatter = get_formatter()
 
     for handler in logging.getLogger().handlers:
         handler.setFormatter(log_formatter)
