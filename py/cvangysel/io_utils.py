@@ -11,6 +11,7 @@ import re
 import sys
 import unicodedata
 import html.parser as HTMLParser
+import warnings
 
 parser = HTMLParser.HTMLParser()
 
@@ -461,6 +462,8 @@ def strip_html(html, include_metatags=True):
     try:
         soup = bs4.BeautifulSoup(html, 'lxml')
     except:
+        warnings.warning('lxml not found; unable to strip HTML.')
+
         return None
 
     # Remove javascript.
