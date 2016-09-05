@@ -148,67 +148,85 @@ def translated_token_stream(iterable, words):
             yield words[word].id
 
 
+class WindowBuffer(object):
+
+    def __init__(self, window_size, skip_size, start_position):
+        self.window_size = window_size
+        self.skip_size = skip_size
+
+        self.start_position = start_position
+
+        self.buffer = collections.deque(maxlen=window_size)
+
+        self.clear()
+
+    def append(self, token):
+        if self.num_tokens % (self.skip_size + 1) == 0:
+            self.buffer.append(token)
+
+        self.num_tokens += 1
+
+    def clear(self):
+        self.buffer.clear()
+        self.num_tokens = self.start_position
+
+    def forget(self, num_positions):
+        assert num_positions <= self.window_size
+        assert self.full()
+
+        [self.buffer.popleft() for _ in range(num_positions)]
+
+        assert len(self.buffer) == (self.window_size - num_positions)
+
+    def full(self):
+        return len(self.buffer) == self.window_size
+
+    def translate(self, words):
+        return tuple(words[word].id for word in self.buffer)
+
+
 def windowed_translated_token_stream(iterable, window_size, words,
                                      eos_chars=['\n'], eos_token='</s>',
-                                     stride=1, padding_token=None,
+                                     skips=(0,), stride=1, padding_token=None,
                                      callback=None):
+    if not hasattr(window_size, '__len__'):
+        window_size = window_size,
+
     assert eos_token in words
     assert padding_token in words or padding_token is None
-    assert stride >= 1 and stride <= window_size
-
-    buffer = collections.deque(maxlen=window_size)
+    assert stride >= 1 and stride <= max(window_size)
 
     num_yielded_windows = 0
 
-    def probe():
-        while True:
-            try:
-                word = next(iterable)
-            except StopIteration:
-                return False
+    windows = [
+        WindowBuffer(window, skip_size, start_position)
+        for window in window_size
+        for skip_size in skips
+        for start_position in range(skip_size + 1)]
 
-            # If </S> is encountered, clear buffer and return to caller.
-            if word in eos_chars or word == eos_token:
-                buffer.clear()
+    for word in iterable:
+        if word in eos_chars or word == eos_token:
+            [window.clear() for window in windows]
+        elif word in words:
+            for window in windows:
+                window.append(word)
 
-                return True
-
-            if word in words:
-                buffer.append(word)
-
-                return True
-
-    def prepare_buffer():
-        return tuple(words[word].id for word in buffer)
-
-    while True:
-        # If buffer below capacity, fill-up until full.
-        new_data = False
-
-        while len(buffer) < window_size:
-            if not probe():
-                # Add padding to the current buffer, if requested.
-                if padding_token is not None and len(buffer) > 0 and new_data:
-                    while len(buffer) < window_size:
-                        buffer.append(padding_token)
-
-                    yield prepare_buffer()
+                if window.full():
+                    yield window.translate(words)
                     num_yielded_windows += 1
 
-                if hasattr(callback, '__call__'):
-                    callback(num_yielded_windows, tuple(buffer))
+                    window.forget(stride)
 
-                return
-            else:
-                new_data = True
+    if padding_token is not None:
+        for window in windows:
+            while not window.full():
+                window.append(padding_token)
 
-        yield prepare_buffer()
-        num_yielded_windows += 1
+            yield window.translate(words)
+            num_yielded_windows += 1
 
-        # Remove number of elements equal to the stride.
-        [buffer.popleft() for _ in range(stride)]
-
-        assert len(buffer) == (window_size - stride)
+    if hasattr(callback, '__call__'):
+        callback(num_yielded_windows, windows)
 
 
 def replace_numeric_tokens_stream(iterable, placeholder_token='<num>'):
