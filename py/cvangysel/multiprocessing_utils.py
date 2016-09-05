@@ -2,6 +2,7 @@ import logging
 import sys
 import traceback
 
+import multiprocessing
 import queue
 
 
@@ -33,6 +34,72 @@ class WorkerFunction(object):
                 exc_value, exc_type, traceback.format_tb(exc_traceback))
 
             raise
+
+
+class WorkerMetaclass(type):
+
+    """
+        Metaclass which encapsulates multiprocessing in a
+        convenient functor-style paradigm.
+
+        Usage:
+            from cvangysel import multiprocessing_utils
+
+            import numpy as np
+
+            class PowerFn(object,
+                          metaclass=multiprocessing_utils.WorkerMetaclass):
+
+                @staticmethod
+                def worker(x):
+                    return np.power(x, PowerFn.exponent)
+
+            if __name__ == "__main__":
+                # The exponent keyword argument is passed to every worker and
+                # is accessible within each worker as PowerFn.exponent.
+                power_fn = PowerFn(processes=32, exponent=2)
+
+                # The following loop processes the iterable over 32 processes.
+                for squared in power_fn(range(1000)):
+                    print(squared)
+    """
+
+    @staticmethod
+    def pool_initializer(cls, kwds):
+        for key, value in kwds.items():
+            setattr(cls.__class__, key, value)
+
+        setattr(cls.__class__, 'process', multiprocessing.current_process())
+
+    def clazz_call(self, iterable):
+        if self.pool:
+            return self.pool.imap_unordered(
+                WorkerFunction(self.worker), iterable)
+        else:
+            return (self.worker(payload) for payload in iterable)
+
+    def __init__(cls, name, bases, dct):
+        assert hasattr(cls, 'worker'), \
+            '{} should implement worker function.'.format(cls)
+
+        cls.__call__ = WorkerMetaclass.clazz_call
+
+        super(WorkerMetaclass, cls).__init__(name, bases, dct)
+
+    def __call__(self, processes, **kwargs):
+        clazz = super(WorkerMetaclass, self).__call__()
+
+        if processes > 1:
+            pool = multiprocessing.Pool(
+                processes=processes,
+                initializer=WorkerMetaclass.pool_initializer,
+                initargs=(clazz, kwargs))
+        else:
+            pool = None
+
+        clazz.pool = pool
+
+        return clazz
 
 
 class QueueIterator(object):
