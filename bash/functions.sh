@@ -108,6 +108,15 @@ check_valid_option() {
 # File system.
 #
 
+check_multiple() {
+    INVARIANT="${1:-}"
+    shift
+
+    for ARG in $@; do
+        ${INVARIANT} ${ARG}
+    done
+}
+
 check_file() {
     if [[ ! -f "$1" ]]; then
         echo "File $1 does not exist."
