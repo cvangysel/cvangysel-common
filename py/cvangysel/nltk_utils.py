@@ -8,11 +8,14 @@ except ImportError:
     import nltk
     nltk.download('stopwords')
 
+    import importlib
+    importlib.reload(nltk)
+
     from nltk.corpus import stopwords
 
 
 def get_stopwords(include_trectext_syntax=True):
-    ignore_words = ['<doc>', '</doc>', '<text>', '</text>']
+    ignore_words = ['<doc>', '</doc>', '<docno>', '<text>', '</text>']
 
     ignore_words.extend(stopwords.words('english'))
     ignore_words.extend(stopwords.words('dutch'))
@@ -47,6 +50,9 @@ class EfficientFreqDist(object):
 
     def keys(self):
         return self.samples.keys()
+
+    def __contains__(self, key):
+        return key in self.samples
 
     def __getitem__(self, key):
         return self.samples[key]
