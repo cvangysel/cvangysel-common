@@ -1,5 +1,4 @@
 import bs4
-import codecs
 import collections
 import itertools
 import io
@@ -13,9 +12,112 @@ import unicodedata
 import html.parser as HTMLParser
 import warnings
 
+from cvangysel import multiprocessing_utils
+
 parser = HTMLParser.HTMLParser()
 
 Word = collections.namedtuple('Word', ['id', 'count'])
+
+
+def construct_vocabulary(
+        document_paths, num_workers=16,
+        min_word_count=2, min_word_size=2,
+        max_vocabulary_size=None,
+        ignore_words=set()):
+    words, tokens = extract_vocabulary(
+        document_paths,
+        min_count=min_word_count,
+        max_vocab_size=max_vocabulary_size,
+        min_word_size=min_word_size,
+        num_workers=num_workers,
+        ignore_tokens=ignore_words)
+
+    return Vocabulary(words, tokens)
+
+
+class Vocabulary(object):
+
+    """
+    Vocabulary encapsulation. Supports gensim API.
+    """
+
+    def __init__(self, words, tokens):
+        assert len(words) == len(tokens)
+
+        # tokens is a list, the word at index idx correspond to token idx.
+        #
+        # id2token
+        self.id2token = tokens
+
+        # words is a dictionary, the entry with word as key has token
+        # has the corresponding Word instances pair (token id and
+        # occurence count) as value.
+        #
+        # token2id
+        self.token2id = words
+
+        # Call word_count() to initialize the total_word_count member.
+        #
+        # We do not do this here for backwards compatibility reasons.
+        self.num_word_impressions
+
+    def __getitem__(self, tokenid):
+        return self.id2token[tokenid]
+
+    def __iter__(self):
+        return self.keys()
+
+    def __contains__(self, token):
+        return token in self.token2id
+
+    def keys(self):
+        return self.iterkeys()
+
+    def iterkeys(self):
+        return range(len(self.token2id))
+
+    def iteritems(self):
+        return self.token2id.items()
+
+    def itertokens(self):
+        return iter(self.id2token)
+
+    def __len__(self):
+        return len(self.token2id)
+
+    def __str__(self):
+        return 'DistributedDictionary({0} unique tokens)'.format(
+            len(self.token2id))
+
+    def get_token_id(self, token):
+        return self.token2id[token].id
+
+    def doc2bow(self, document):
+        if isinstance(document, str) or isinstance(document, bytes):
+            raise TypeError(
+                'doc2bow expects an array of unicode tokens on input, '
+                'not a single string')
+
+        counter = collections.defaultdict(int)
+
+        for token in document:
+            word = self.token2id.get(token, None)
+
+            if word is None:
+                continue
+
+            counter[word.id] += 1
+
+        return sorted(counter.items())
+
+    @property
+    def num_word_impressions(self):
+        if not hasattr(self, 'total_word_count'):
+            self.total_word_count = sum(
+                meta.count
+                for meta in self.token2id.values())
+
+        return self.total_word_count
 
 
 def tokenize_text(text, ignore_words=set()):
@@ -285,71 +387,74 @@ def downsample_tokens_stream(iterable,
         callback(num_tokens, num_discarded_tokens)
 
 
-def extract_vocabulary_worker(payload):
-    filename, idx, num_chunks, params = payload
+class VocabularyExtractFn(object, metaclass=multiprocessing_utils.WorkerMetaclass):
 
-    if params['encoding'] != 'ascii' and num_chunks != 1:
-        raise NotImplementedError('We do not yet support chunking files '
-                                  'if multi-byte encoding are used.')
+    @staticmethod
+    def worker(payload):
+        filename, idx, num_chunks, params = payload
 
-    numerical_placeholder_token = (
-        params['numerical_placeholder_token']
-        if 'numerical_placeholder_token' in params else False)
+        if params['encoding'] != 'ascii' and num_chunks != 1:
+            raise NotImplementedError('We do not yet support chunking files '
+                                      'if multi-byte encoding are used.')
 
-    min_word_size = (
-        params['min_word_size'] if 'min_word_size' in params else 0)
+        numerical_placeholder_token = (
+            params['numerical_placeholder_token']
+            if 'numerical_placeholder_token' in params else False)
 
-    logging.debug('I am worker with id %d (total=%d) reading %s.',
-                  idx, num_chunks, filename)
+        min_word_size = (
+            params['min_word_size'] if 'min_word_size' in params else 0)
 
-    # idx should be zero-indexed.
-    assert idx < num_chunks
+        logging.debug('I am worker with id %d (total=%d) reading %s.',
+                      idx, num_chunks, filename)
 
-    f = open(filename, 'r', encoding=params.get('encoding', None))
-    file_size = os.fstat(f.fileno()).st_size
+        # idx should be zero-indexed.
+        assert idx < num_chunks
 
-    chunk_size = file_size // num_chunks
+        f = open(filename, 'r', encoding=params.get('encoding', None))
+        file_size = os.fstat(f.fileno()).st_size
 
-    start_position = idx * chunk_size
+        chunk_size = file_size // num_chunks
 
-    if idx == (num_chunks - 1):
-        end_position = file_size
-    else:
-        end_position = (idx + 1) * chunk_size
+        start_position = idx * chunk_size
 
-    logging.debug('[%s:%d] Reading from %d to %d (file size=%d).',
-                  filename, idx, start_position, end_position, file_size)
+        if idx == (num_chunks - 1):
+            end_position = file_size
+        else:
+            end_position = (idx + 1) * chunk_size
 
-    # Set file marker.
-    f.seek(start_position)
+        logging.debug('[%s:%d] Reading from %d to %d (file size=%d).',
+                      filename, idx, start_position, end_position, file_size)
 
-    # Read current batch of characters.
-    char_stream = character_stream(f, limit=end_position)
+        # Set file marker.
+        f.seek(start_position)
 
-    word_stream = token_stream(lowercased_stream(
-        filter_non_latin_stream(
-            filter_non_alphanumeric_stream(
-                itertools.chain(*char_stream)))))
+        # Read current batch of characters.
+        char_stream = character_stream(f, limit=end_position)
 
-    # Count words.
-    word_counts = collections.defaultdict(int)
-    num_words = 0
+        word_stream = token_stream(lowercased_stream(
+            filter_non_latin_stream(
+                filter_non_alphanumeric_stream(
+                    itertools.chain(*char_stream)))))
 
-    for word in word_stream:
-        if len(word) < min_word_size:
-            continue
+        # Count words.
+        word_counts = collections.defaultdict(int)
+        num_words = 0
 
-        if numerical_placeholder_token and word.isdigit():
-            word = numerical_placeholder_token
+        for word in word_stream:
+            if len(word) < min_word_size:
+                continue
 
-        word_counts[word] += 1
-        num_words += 1
+            if numerical_placeholder_token and word.isdigit():
+                word = numerical_placeholder_token
 
-    f.close()
+            word_counts[word] += 1
+            num_words += 1
 
-    logging.info('[%s:%d] Done.', filename, idx)
+        f.close()
 
-    return num_words, word_counts
+        logging.info('[%s:%d] Done.', filename, idx)
+
+        return num_words, word_counts
 
 
 def extract_vocabulary(filenames, encoding,
@@ -393,16 +498,11 @@ def extract_vocabulary(filenames, encoding,
 
         return num_words, word_counts
 
-    if num_workers > 1:
-        pool = multiprocessing.Pool(num_workers)
+    vocabulary_extract_fn = VocabularyExtractFn(processes=num_workers)
+    num_words, word_counts = _aggregate_results(
+        vocabulary_extract_fn(payloads))
 
-        results = pool.imap_unordered(extract_vocabulary_worker, payloads)
-        num_words, word_counts = _aggregate_results(results)
-
-        pool.close()
-    else:
-        results = (extract_vocabulary_worker(payload) for payload in payloads)
-        num_words, word_counts = _aggregate_results(results)
+    del vocabulary_extract_fn
 
     word_counts = [(word, count) for word, count in word_counts.items()
                    if word not in ignore_tokens]
