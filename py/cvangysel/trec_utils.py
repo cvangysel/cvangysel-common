@@ -257,7 +257,7 @@ class TRECTextReader(object):
         digit_regex = re.compile('\d+')
 
         for document_path in self.document_paths:
-            logging.info('Iterating over %s.', document_path)
+            logging.debug('Iterating over %s.', document_path)
 
             with open(document_path, 'r', encoding=self.encoding) as f:
                 for doc_id, text in _parse_trectext(f):
