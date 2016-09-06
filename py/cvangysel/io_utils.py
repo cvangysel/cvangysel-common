@@ -19,18 +19,9 @@ parser = HTMLParser.HTMLParser()
 Word = collections.namedtuple('Word', ['id', 'count'])
 
 
-def construct_vocabulary(
-        document_paths, num_workers=16,
-        min_word_count=2, min_word_size=2,
-        max_vocabulary_size=None,
-        ignore_words=set()):
+def construct_vocabulary(document_paths, *args, **kwargs):
     words, tokens = extract_vocabulary(
-        document_paths,
-        min_count=min_word_count,
-        max_vocab_size=max_vocabulary_size,
-        min_word_size=min_word_size,
-        num_workers=num_workers,
-        ignore_tokens=ignore_words)
+        document_paths, *args, **kwargs)
 
     return Vocabulary(words, tokens)
 
@@ -452,7 +443,7 @@ class VocabularyExtractFn(object, metaclass=multiprocessing_utils.WorkerMetaclas
 
         f.close()
 
-        logging.info('[%s:%d] Done.', filename, idx)
+        logging.debug('[%s:%d] Done.', filename, idx)
 
         return num_words, word_counts
 
@@ -475,7 +466,8 @@ def extract_vocabulary(filenames, encoding,
         'encoding': encoding,
     }
 
-    payloads = [(filename, idx, num_chunks, params) for filename in filenames
+    payloads = [(filename, idx, num_chunks, params)
+                for filename in filenames
                 for idx in range(num_chunks)]
 
     logging.debug('Multiprocessing payloads: %s.', payloads)
@@ -485,9 +477,15 @@ def extract_vocabulary(filenames, encoding,
         word_counts = collections.defaultdict(int)
         num_words = 0
 
-        for chunk_num_words, chunk_word_counts in results:
-            logging.info('Worker observed %d words (%d unique).',
-                         chunk_num_words, len(chunk_word_counts))
+        for result_idx, (chunk_num_words, chunk_word_counts) in \
+                enumerate(results):
+            logging.debug('Worker observed %d words (%d unique).',
+                          chunk_num_words, len(chunk_word_counts))
+
+            if (result_idx + 1) % 5 == 0:
+                logging.info('Processed %d out of %d chunks (%.4f%%)',
+                             result_idx + 1, len(payloads),
+                             100.0 * (result_idx + 1) / len(payloads))
 
             for word, count in chunk_word_counts.items():
                 if len(word) < min_word_size:
