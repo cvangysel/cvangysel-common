@@ -1,12 +1,15 @@
 import logging
 import os
+import socket
 import subprocess
 import sys
 
 
 def get_formatter():
     return logging.Formatter(
-        '%(asctime)s [%(threadName)s] [%(name)s] [%(levelname)s]  %(message)s')
+        '%(asctime)s [%(threadName)s.{}] '
+        '[%(name)s] [%(levelname)s]  '
+        '%(message)s'.format(get_hostname()))
 
 
 def configure_logging(args, output_path=None):
@@ -61,3 +64,7 @@ def get_git_revision_hash():
         return proc.communicate()[0].strip()
     except:
         return None
+
+
+def get_hostname():
+    return socket.gethostbyaddr(socket.gethostname())[0]
