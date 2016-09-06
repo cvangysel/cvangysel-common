@@ -76,7 +76,7 @@ def _parse_trectext(iter, ignore_content=False):
             assert current_document is not None
             assert current_document['id'] is None
 
-            current_document['id'] = doc_id_match.group(1)
+            current_document['id'] = doc_id_match.group(1).strip()
         else:
             if current_document is None:
                 logging.error(
@@ -106,7 +106,7 @@ def _parse_trectext(iter, ignore_content=False):
 def _iter_trectext_document_ids_worker(data):
     document_path, encoding = data
 
-    logging.info('Iterating over %s.', document_path)
+    logging.debug('Iterating over %s.', document_path)
 
     with open(document_path, 'r', encoding=encoding) as f:
         return [doc_id for doc_id, _ in _parse_trectext(f)]
@@ -137,7 +137,7 @@ def _iter_trectext_documents_multiprocessing_worker_initializer(
 
 
 def _iter_trectext_documents_multiprocessing_worker_(document_path):
-    logging.info('Iterating over %s.', document_path)
+    logging.debug('Iterating over %s.', document_path)
 
     num_documents = 0
 
@@ -240,9 +240,15 @@ class TRECTextReader(object):
 
         pool = multiprocessing.Pool(num_workers)
 
-        for chunk_document_ids in pool.map(
+        for chunk_idx, chunk_document_ids in enumerate(pool.map(
                 _iter_trectext_document_ids_worker,
-                [(path, self.encoding) for path in self.document_paths]):
+                [(path, self.encoding) for path in self.document_paths])):
+            if (chunk_idx + 1) % 5 == 0:
+                logging.info('Processed %d out of %d paths (%.4f%%).',
+                             chunk_idx + 1, len(self.document_paths),
+                             100.0 * (chunk_idx + 1) / len(
+                                 self.document_paths))
+
             document_ids.update(set(chunk_document_ids))
 
         return document_ids
@@ -303,9 +309,19 @@ class TRECTextReader(object):
         it = multiprocessing_utils.QueueIterator(
             pool, worker_result, result_q)
 
+        result_idx = 0
+
         while True:
             try:
                 result = next(it)
+
+                if (result_idx + 1) % 5 == 0:
+                    logging.info('Processed %d out of %d paths (%.4f%%).',
+                                 result_idx + 1, len(self.document_paths),
+                                 100.0 * (result_idx + 1) / len(
+                                     self.document_paths))
+
+                result_idx += 1
             except StopIteration:
                 break
 
