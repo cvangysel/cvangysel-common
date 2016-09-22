@@ -1,5 +1,7 @@
 import bs4
+import codecs
 import collections
+import gzip
 import itertools
 import io
 import logging
@@ -17,6 +19,23 @@ from cvangysel import multiprocessing_utils
 parser = HTMLParser.HTMLParser()
 
 Word = collections.namedtuple('Word', ['id', 'count'])
+
+
+__python_open = open
+
+def open(filename, mode, encoding='ascii'):
+    if 'b' in mode:
+        assert encoding is None
+
+    if filename.endswith('.gz'):
+        assert 'w' not in mode
+
+        zf = gzip.open(filename, mode)
+        reader = codecs.getreader(encoding)
+
+        return reader(zf)
+    else:
+        return __python_open(filename, mode, encoding=encoding)
 
 
 def construct_vocabulary(document_paths, *args, **kwargs):
