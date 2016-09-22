@@ -315,12 +315,6 @@ class TRECTextReader(object):
             try:
                 result = next(it)
 
-                if (result_idx + 1) % 5 == 0:
-                    logging.info('Processed %d out of %d paths (%.4f%%).',
-                                 result_idx + 1, len(self.document_paths),
-                                 100.0 * (result_idx + 1) / len(
-                                     self.document_paths))
-
                 result_idx += 1
             except StopIteration:
                 break
@@ -330,9 +324,10 @@ class TRECTextReader(object):
 
 class ShardedTRECTextWriter(object):
 
-    def __init__(self, base, shard_size):
+    def __init__(self, base, shard_size, encoding='ascii'):
         self.base = base
         self.shard_size = shard_size
+        self.encoding = encoding
 
         self.current = None
 
@@ -354,7 +349,10 @@ class ShardedTRECTextWriter(object):
 
         logging.info('Writing shard %s', path)
 
-        f = io.open(path, 'w')
+        if self.encoding is not None:
+            f = open(path, 'w', encoding=self.encoding)
+        else:
+            f = open(path, 'wb')
 
         self.current = (id, f)
         self.current_count = 0
@@ -364,13 +362,22 @@ class ShardedTRECTextWriter(object):
 
         self.current[1].close()
 
+    def _write(self, data):
+        if self.encoding is None and isinstance(data, str):
+            self.current[1].write(data.encode('ascii'))
+        elif self.encoding is not None and isinstance(data, bytes):
+            self.current[1].write(data.decode('ascii'))
+        else:
+            self.current[1].write(data)
+
     def write_document(self, doc_id, doc_text):
-        self.current[1].write('<DOC>\n')
-        self.current[1].write('<DOCNO>{0}</DOCNO>\n'.format(doc_id))
-        self.current[1].write('<TEXT>\n')
-        self.current[1].write('{0}\n'.format(doc_text))
-        self.current[1].write('</TEXT>\n')
-        self.current[1].write('</DOC>\n')
+        self._write('<DOC>\n')
+        self._write('<DOCNO>{0}</DOCNO>\n'.format(doc_id))
+        self._write('<TEXT>\n')
+        self._write(doc_text)
+        self._write('\n')
+        self._write('</TEXT>\n')
+        self._write('</DOC>\n')
 
         self.current_count += 1
 
@@ -424,13 +431,13 @@ def parse_topics(file_or_files,
 
     if not isinstance(file_or_files, list) and \
             not isinstance(file_or_files, tuple):
-        if hasattr(file_or_files, '__iter__'):
+        if not isinstance(file_or_files, io.IOBase):
             file_or_files = list(file_or_files)
         else:
             file_or_files = [file_or_files]
 
     for f in file_or_files:
-        assert isinstance(f, io.IOBase)
+        assert isinstance(f, io.IOBase), type(f)
 
         for line in f:
             assert(isinstance(line, str))
@@ -440,7 +447,13 @@ def parse_topics(file_or_files,
             if not line:
                 continue
 
-            topic_id, terms = line.split(delimiter, 1)
+            try:
+                topic_id, terms = line.split(delimiter, 1)
+            except ValueError:
+                logging.warning('Unable to process "%s" in topics list.',
+                                line)
+
+                continue
 
             if topic_id in topics and (topics[topic_id] != terms):
                     logging.error('Duplicate topic "%s" (%s vs. %s).',
