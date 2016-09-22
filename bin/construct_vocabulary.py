@@ -60,7 +60,8 @@ def main():
         pickle.dump(vocabulary, f_out, pickle.HIGHEST_PROTOCOL)
 
     if args.humanreadable_dictionary_out is not None:
-        with open(args.humanreadable_dictionary_out, 'w') as f_out:
+        with open(args.humanreadable_dictionary_out, 'w',
+                  encoding=args.encoding) as f_out:
             for token, token_meta in vocabulary.iteritems():
                 f_out.write('{} {}\n'.format(token, token_meta.id))
 
