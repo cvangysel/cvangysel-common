@@ -50,7 +50,14 @@ def compute_ndcg_for_document_scores(document_scores, document_relevances,
 
 def _optimal_weight_vector_optimization_objective(
         weights, features, relevances, rank_cutoff):
-    scores = np.dot(features, weights)
+    if not hasattr(_optimal_weight_vector_optimization_objective, '_scores_buffer'):
+        _optimal_weight_vector_optimization_objective._scores_buffer = \
+            np.ndarray(shape=(features.shape[0],),
+                       dtype=weights.dtype,
+                       order='C')
+
+    scores = np.dot(features, weights,
+                    out=_optimal_weight_vector_optimization_objective._scores_buffer)
 
     ndcg = compute_ndcg_for_document_scores(
         scores, relevances, rank_cutoff=rank_cutoff)
@@ -59,7 +66,7 @@ def _optimal_weight_vector_optimization_objective(
 
 
 def optimal_weight_vector(document_features, document_relevances,
-                          rank_cutoff=None, use_scipy=False, use_celery=False):
+                          rank_cutoff=None):
     num_documents, num_features = document_features.shape
     assert document_relevances.shape == (num_documents,)
 
