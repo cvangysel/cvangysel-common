@@ -28,23 +28,52 @@ measures = {
 
 def _parse_trectext(iter, ignore_content=False):
     start_doc_re = re.compile(r'^<DOC>$')
-    end_doc_re = re.compile(r'^</DOC>$')
+    end_doc_re = re.compile(r'^(.*)</DOC>$')
 
     start_doc_hdr = re.compile(r'^<DOCHDR>$')
     end_doc_hdr = re.compile(r'^</DOCHDR>$')
 
     doc_id_re = re.compile(r'^<DOCNO>\s*(.*)\s*</DOCNO>$')
+    doc_old_id_re = re.compile(r'^<DOCOLDNO>\s*(.*)\s*</DOCOLDNO>$')
 
     current_document = None
     current_content = None
 
+    def process_content(content):
+        if current_document is None:
+            logging.error(
+                'Encountered input outside of document context: %s', content)
+
+            return False
+        elif current_document['id'] is None:
+            logging.error(
+                'Encountered input before document identifier: %s', content)
+
+            return False
+        elif current_content is None:
+            logging.error(
+                'Encountered input within document without context: %s',
+                content)
+
+            return False
+
+        if ignore_content:
+            return True
+
+        content = content.strip()
+        current_content.append(io_utils.filter_non_ascii(content))
+
+        return True
+
     for line in iter:
         doc_id_match = doc_id_re.match(line)
+        doc_old_id_match = doc_old_id_re.match(line)
+        end_doc_match = end_doc_re.match(line)
 
         if line.isspace():
             continue
         elif start_doc_re.match(line):
-            assert current_document is None
+            assert current_document is None, current_document
 
             current_document = {
                 'id': None,
@@ -53,8 +82,10 @@ def _parse_trectext(iter, ignore_content=False):
             }
 
             current_content = current_document['content']
-        elif end_doc_re.match(line):
+        elif end_doc_match:
             assert current_document is not None
+
+            process_content(end_doc_match.group(1))
 
             yield current_document['id'], current_document['content']
 
@@ -63,7 +94,7 @@ def _parse_trectext(iter, ignore_content=False):
         elif start_doc_hdr.match(line):
             assert current_document is not None
             assert current_document['id'] is not None
-            assert not current_document['content']
+            assert not current_document['content'], (current_document, [line])
 
             current_content = current_document['header']
         elif end_doc_hdr.match(line):
@@ -77,30 +108,10 @@ def _parse_trectext(iter, ignore_content=False):
             assert current_document['id'] is None
 
             current_document['id'] = doc_id_match.group(1).strip()
+        elif doc_old_id_match:
+            pass  # Legacy document id.
         else:
-            if current_document is None:
-                logging.error(
-                    'Encountered input outside of document context: %s', line)
-
-                continue
-            elif current_document['id'] is None:
-                logging.error(
-                    'Encountered input before document identifier: %s', line)
-
-                continue
-            elif current_content is None:
-                logging.error(
-                    'Encountered input within document without context: %s',
-                    line)
-
-                continue
-
-            if ignore_content:
-                continue
-
-            line = line.strip()
-
-            current_content.append(io_utils.filter_non_ascii(line))
+            process_content(line)
 
 
 def _iter_trectext_document_ids_worker(data):
@@ -108,7 +119,7 @@ def _iter_trectext_document_ids_worker(data):
 
     logging.debug('Iterating over %s.', document_path)
 
-    with open(document_path, 'r', encoding=encoding) as f:
+    with io_utils.open(document_path, 'r', encoding=encoding) as f:
         return [doc_id for doc_id, _ in _parse_trectext(f)]
 
 
@@ -141,9 +152,10 @@ def _iter_trectext_documents_multiprocessing_worker_(document_path):
 
     num_documents = 0
 
-    with open(document_path, 'r',
-              encoding=_iter_trectext_documents_multiprocessing_worker_.
-              encoding) as f:
+    with io_utils.open(
+            document_path, 'r',
+            encoding=_iter_trectext_documents_multiprocessing_worker_.
+            encoding) as f:
         for doc_id, text in _parse_trectext(f):
             if (_iter_trectext_documents_multiprocessing_worker_.
                 document_ids and
@@ -259,7 +271,7 @@ class TRECTextReader(object):
         for document_path in self.document_paths:
             logging.debug('Iterating over %s.', document_path)
 
-            with open(document_path, 'r', encoding=self.encoding) as f:
+            with io_utils.open(document_path, 'r', encoding=self.encoding) as f:
                 for doc_id, text in _parse_trectext(f):
                     text = ' '.join(text)
 
@@ -350,9 +362,9 @@ class ShardedTRECTextWriter(object):
         logging.info('Writing shard %s', path)
 
         if self.encoding is not None:
-            f = open(path, 'w', encoding=self.encoding)
+            f = io_utils.open(path, 'w', encoding=self.encoding)
         else:
-            f = open(path, 'wb')
+            f = io_utils.open(path, 'wb')
 
         self.current = (id, f)
         self.current_count = 0
