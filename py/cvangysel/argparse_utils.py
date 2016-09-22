@@ -35,6 +35,16 @@ def ratio(value):
             '"{0}" is not a valid ratio'.format(value))
 
 
+def existing_directory_path(value):
+    value = str(value)
+
+    if os.path.isdir(value):
+        return value
+    else:
+        raise argparse.ArgumentTypeError(
+            '"{0}" is not a directory'.format(value))
+
+
 def existing_file_path(value):
     value = str(value)
 
