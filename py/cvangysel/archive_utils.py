@@ -41,3 +41,44 @@ class Extract7zArchive(object):
             logging.info('Removing temporary directory %s.', self.tmp_dir)
 
             shutil.rmtree(self.tmp_dir)
+
+
+class PackedFile(object):
+
+    def __init__(self, filename, encoding):
+        assert os.path.exists(filename)
+
+        self.filename = filename
+        self.encoding = encoding
+
+        _, self.tmp_file = tempfile.mkstemp()
+
+        proc = subprocess.Popen(['pigz', '-dz', '-c', self.filename],
+                                stdout=subprocess.PIPE)
+
+        with open(self.tmp_file, 'wb') as f_tmp:
+            while True:
+                line = proc.stdout.readline()
+                if line:
+                    f_tmp.write(line)
+                else:
+                    break
+
+        self.f = open(self.tmp_file, 'r', encoding=self.encoding)
+
+        for attr in ('seek', 'tell', 'read', 'fileno'):
+            setattr(self, attr, getattr(self.f, attr))
+
+    def __enter__(self):
+        return self.f.__enter__()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+    def close(self):
+        self.f.close()
+
+        for attr in ('__enter__', '__exit__', 'seek', 'tell', 'read', 'fileno'):
+            setattr(self, attr, None)
+
+        os.remove(self.tmp_file)
