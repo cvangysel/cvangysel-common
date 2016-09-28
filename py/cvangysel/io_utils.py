@@ -10,11 +10,12 @@ import numpy as np
 import os
 import re
 import sys
+import subprocess
 import unicodedata
 import html.parser as HTMLParser
 import warnings
 
-from cvangysel import multiprocessing_utils
+from cvangysel import archive_utils, multiprocessing_utils
 
 parser = HTMLParser.HTMLParser()
 
@@ -34,6 +35,10 @@ def open(filename, mode, encoding='ascii'):
         reader = codecs.getreader(encoding)
 
         return reader(zf)
+    elif filename.endswith('.z'):
+        assert 'w' not in mode
+
+        return archive_utils.PackedFile(filename, encoding=encoding)
     else:
         return __python_open(filename, mode, encoding=encoding)
 
@@ -138,7 +143,8 @@ def tokenize_text(text, ignore_words=set()):
             lowercased_stream(
                 filter_non_latin_stream(
                     filter_non_alphanumeric_stream(
-                        iter(text)))),
+                        unicode_normalize_stream(
+                            iter(text))))),
             eos_chars=[], ignore_words=ignore_words))
 
 
@@ -201,6 +207,13 @@ def filter_non_latin_stream(character_stream):
     return filter(_filter_non_latin, character_stream)
 
 
+def unicode_normalize_stream(character_stream):
+    return (normalized_character
+            for character in character_stream
+            for normalized_character in
+            unicodedata.normalize('NFKC', character))
+
+
 def filter_non_alphanumeric_stream(character_stream):
     allowed_chars = set(['<', '/', '>'])
 
@@ -210,8 +223,8 @@ def filter_non_alphanumeric_stream(character_stream):
         character_stream)
 
 
-def token_stream(unicode_stream, delimiters=(' ', '\t', '\n'),
-                 eos_chars=['\n'], eos_token='</s>',
+def token_stream(unicode_stream, delimiters=(' ', '\t', '\n', '\r'),
+                 eos_chars=['\n', '\r'], eos_token='</s>',
                  ignore_words=[]):
     delimiters = set(delimiters)
     eos_chars = set(eos_chars)
@@ -444,7 +457,8 @@ class VocabularyExtractFn(object, metaclass=multiprocessing_utils.WorkerMetaclas
         word_stream = token_stream(lowercased_stream(
             filter_non_latin_stream(
                 filter_non_alphanumeric_stream(
-                    itertools.chain(*char_stream)))))
+                    unicode_normalize_stream(
+                        itertools.chain(*char_stream))))))
 
         # Count words.
         word_counts = collections.defaultdict(int)
@@ -476,6 +490,9 @@ def extract_vocabulary(filenames, encoding,
 
     logging.info('Extracting vocabulary from %d corpora using %d worker(s).',
                  len(filenames), num_workers)
+
+    # Quick-fix to avoid problems down the line.
+    num_workers = min(num_workers, len(filenames))
 
     num_chunks = max(num_workers // len(filenames), 1)
 
