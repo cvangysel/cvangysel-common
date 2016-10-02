@@ -33,7 +33,7 @@ def _parse_trectext(iter, ignore_content=False):
     start_doc_hdr = re.compile(r'^<DOCHDR>$')
     end_doc_hdr = re.compile(r'^</DOCHDR>$')
 
-    doc_id_re = re.compile(r'^<DOCNO>\s*(.*)\s*</DOCNO>$')
+    doc_id_re = re.compile(r'^<DOCNO>(\s*(.*)\s*</DOCNO>)?$')
     doc_old_id_re = re.compile(r'^<DOCOLDNO>\s*(.*)\s*</DOCOLDNO>$')
 
     current_document = None
@@ -61,6 +61,9 @@ def _parse_trectext(iter, ignore_content=False):
             return True
 
         content = content.strip()
+
+        # TODO(cvangysel): filter_non_ascii is a very harsh filtering technique.
+        #                  Figure out if we really need this here.
         current_content.append(io_utils.filter_non_ascii(content))
 
         return True
@@ -107,7 +110,11 @@ def _parse_trectext(iter, ignore_content=False):
             assert current_document is not None
             assert current_document['id'] is None
 
-            current_document['id'] = doc_id_match.group(1).strip()
+            if doc_id_match.group(2) is not None:
+                current_document['id'] = doc_id_match.group(2).strip()
+            else:
+                current_document['id'] = next(iter).strip()
+                assert next(iter).strip() == '</DOCNO>'
         elif doc_old_id_match:
             pass  # Legacy document id.
         else:
@@ -213,7 +220,8 @@ def parse_query(unsplitted_terms):
         io_utils.lowercased_stream(
             io_utils.filter_non_latin_stream(
                 io_utils.filter_non_alphanumeric_stream(
-                    iter(unsplitted_terms)))), eos_chars=[]))
+                    io_utils.unicode_normalize_stream(
+                        iter(unsplitted_terms))))), eos_chars=[]))
 
 
 def parse_qrel(f_qrel, lowercase_items=False):
@@ -357,7 +365,7 @@ class ShardedTRECTextWriter(object):
 
         path = '{0}_{1}.trectext'.format(self.base, id)
         if os.path.exists(path):
-            raise RuntimeError()
+            raise RuntimeError('Output shard already exists.')
 
         logging.info('Writing shard %s', path)
 
@@ -376,9 +384,9 @@ class ShardedTRECTextWriter(object):
 
     def _write(self, data):
         if self.encoding is None and isinstance(data, str):
-            self.current[1].write(data.encode('ascii'))
+            self.current[1].write(data.encode(self.encoding))
         elif self.encoding is not None and isinstance(data, bytes):
-            self.current[1].write(data.decode('ascii'))
+            self.current[1].write(data.decode(self.encoding))
         else:
             self.current[1].write(data)
 
