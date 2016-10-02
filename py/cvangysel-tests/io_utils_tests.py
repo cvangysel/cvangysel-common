@@ -30,6 +30,29 @@ class IOUtilsTest(unittest.TestCase):
              (3, 4, 2), (4, 2, 1), (2, 1, 2), (1, 2, 2),
              (2, 2, 1), (2, 1, 3)])
 
+    def test_windowed_translated_token_stream_window_too_large(self):
+        words = {
+            '</s>': io_utils.Word(id=0, count=1),
+            'world': io_utils.Word(id=1, count=1),
+            'foo': io_utils.Word(id=2, count=1),
+            'bar': io_utils.Word(id=3, count=1),
+            'hello': io_utils.Word(id=4, count=1),
+        }
+
+        text = ('hello', 'world', 'world',
+                'hello', 'bar', 'hello',
+                'foo', 'world', 'foo',
+                'foo', 'world', 'bar')
+
+        stream = io_utils.windowed_translated_token_stream(
+            iter(text),
+            window_size=16,
+            words=words)
+
+        self.assertEqual(
+            list(stream),
+            [])
+
     def test_windowed_translated_token_stream_2stride(self):
         words = {
             '</s>': io_utils.Word(id=0, count=1),
