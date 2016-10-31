@@ -24,6 +24,16 @@ function contains() {
     return 1
 }
 
+# Applies predictate $1 to array $2..
+function apply_array() {
+    PREDICATE=${1}
+    shift
+
+    for ARG in $@; do
+        ${PREDICATE} $ARG
+    done
+}
+
 #
 # Value comparison.
 #
@@ -33,7 +43,7 @@ check_eq() {
     check_not_empty "${2:-}" "second argument"
 
     if [[ "${1}" != "${2}" ]]; then
-        echo "Value '${1}' is not equal to '${2}'."
+        1>&2 echo "Value '${1}' is not equal to '${2}'."
 
         exit -1
     fi
@@ -45,16 +55,21 @@ check_eq() {
 
 check_int() {
     if [[ ! "$1" =~ ^-?[0-9]+?$ ]] ; then
-        echo "String $1 is not a float."
+        1>&2 echo "String $1 is not a float."
         exit -1
     fi
 }
 
 int_compare() {
     if [[ "$1" < "$2" ]]; then
-        echo "$1 is smaller than $2."
+        1>&2 echo "$1 is smaller than $2."
         exit -1
     fi
+}
+
+check_pos_int() {
+    check_int "$1"
+    int_compare "$1" "0"
 }
 
 #
@@ -63,7 +78,7 @@ int_compare() {
 
 check_float() {
     if [[ ! "$1" =~ ^-?[0-9]+([.][0-9]+)?(e-?[0-9]+)?$ ]] ; then
-        echo "String $1 is not a float."
+        1>&2 echo "String $1 is not a float."
         exit -1
     fi
 }
@@ -84,7 +99,7 @@ max() {
 
 check_not_empty() {
     if [[ -z "$1" ]]; then
-        echo "Received empty string instead of $2."
+        1>&2 echo "Received empty string instead of $2."
         exit -1
     fi
 }
@@ -94,11 +109,11 @@ check_valid_option() {
         local n=$#
         local value=${!n}
 
-        printf "Option '%s' is not valid (allowed:" "${value}"
+        1>&2 printf "Option '%s' is not valid (allowed:" "${value}"
         for ((i=1;i < $#;i++)) {
-            printf " %s" "${!i}"
+            1>&2 printf " %s" "${!i}"
         }
-        printf ").\n"
+        1>&2 printf ").\n"
 
         exit -1
     fi
@@ -119,28 +134,28 @@ check_multiple() {
 
 check_file() {
     if [[ ! -f "$1" ]]; then
-        echo "File $1 does not exist."
+        1>&2 echo "File $1 does not exist."
         exit -1
     fi
 }
 
 check_file_not_exists() {
     if [[ -f "$1" ]]; then
-        echo "File $1 already exists."
+        1>&2 echo "File $1 already exists."
         exit -1
     fi
 }
 
 check_directory() {
     if [[ ! -d "$1" ]]; then
-        echo "Directory $1 does not exist."
+        1>&2 echo "Directory $1 does not exist."
         exit -1
     fi
 }
 
 check_directory_not_exists() {
     if [[ -d "$1" ]]; then
-        echo "Directory $1 already exists."
+        1>&2 echo "Directory $1 already exists."
         exit -1
     fi
 }
@@ -157,6 +172,14 @@ directory_md5sum() {
         | sort -k 1
 
     cd "${CURRENT_DIR}"
+}
+
+#
+# Time.
+#
+
+timestamp() {
+    date +%s
 }
 
 if [[ $(contains ${BASH_SOURCE[@]} ${HOME}/.bashrc) == "y" ||
