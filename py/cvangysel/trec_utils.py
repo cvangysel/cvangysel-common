@@ -18,6 +18,7 @@ measures = {
     'map': 'MAP',
     'map_cut_10': 'MAP@10',
     'map_cut_100': 'MAP@100',
+    'map_cut_1000': 'MAP@1000',
     'ndcg': 'NDCG',
     'ndcg_cut_10': 'NDCG@10',
     'ndcg_cut_100': 'NDCG@100',
@@ -249,6 +250,72 @@ def parse_qrel(f_qrel, lowercase_items=False):
     return qrel
 
 
+def parse_trec_topics(f_trec_topics):
+    tag_re = re.compile(r'^<([A-Za-z]+)>(.*)$')
+
+    def _parse_line():
+        line = next(f_trec_topics).strip()
+
+        while not line:
+            line = next(f_trec_topics).strip()
+
+        return line
+
+    topics = []
+
+    current_topic = None
+    line = _parse_line()
+
+    try:
+        while f_trec_topics:
+            if current_topic is None:
+                assert line == '<top>'
+
+                current_topic = {}
+
+                line = _parse_line()
+            else:
+                if line == '</top>':
+                    topics.append(current_topic)
+                    current_topic = None
+
+                    line = _parse_line()
+                elif line[0] == '<':
+                    content = line
+
+                    while True:
+                        line = _parse_line()
+
+                        if line[0] == '<':
+                            break
+                        else:
+                            content += ' '
+                            content += line
+
+                    match = tag_re.match(content)
+
+                    if match:
+                        value = match.group(2).strip()
+
+                        if value.find(':'):
+                            value = value[value.find(':') + 1:].strip()
+
+                        if value.isdigit():
+                            value = int(value)
+
+                        current_topic[match.group(1)] = value
+                    else:
+                        if content[:2] == '</':
+                            pass  # Everything is fine.
+                        else:
+                            logging.error('Unmatched content: %s', content)
+
+    except StopIteration:
+        pass
+
+    return topics
+
+
 class TRECTextReader(object):
 
     def __init__(self, document_paths, encoding):
@@ -476,10 +543,10 @@ def parse_topics(file_or_files,
                 continue
 
             if topic_id in topics and (topics[topic_id] != terms):
-                    logging.error('Duplicate topic "%s" (%s vs. %s).',
-                                  topic_id,
-                                  topics[topic_id],
-                                  terms)
+                logging.error('Duplicate topic "%s" (%s vs. %s).',
+                              topic_id,
+                              topics[topic_id],
+                              terms)
 
             topics[topic_id] = terms
 
@@ -620,7 +687,7 @@ def write_run(model_name, data, out_f,
                 object_id = object_id.decode('utf8')
 
             out_f.write(
-                '{subject} Q0 {object} {rank} {relevance} '
+                '{subject} Q0 {object} {rank} {relevance:.40f} '
                 '{model_name}\n'.format(
                     subject=subject_id,
                     object=object_id,
