@@ -97,6 +97,8 @@ class WorkerMetaclass(type):
         else:
             pool = None
 
+            WorkerMetaclass.pool_initializer(clazz, kwargs)
+
         clazz.pool = pool
 
         return clazz
