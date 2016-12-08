@@ -7,11 +7,14 @@ import logging
 import multiprocessing
 import numpy as np
 import os
+import tempfile
 import re
 import scipy.stats
+import shutil
 import sys
 
 measures = {
+    'success_1': 'P@1',
     'P_5': 'P@5',
     'P_10': 'P@10',
     'P_100': 'P@100',
@@ -24,6 +27,7 @@ measures = {
     'ndcg_cut_100': 'NDCG@100',
     'recip_rank': 'MRR',
     'bpref': 'Bpref',
+    'recall_10': 'Recall@10',
 }
 
 
@@ -510,6 +514,25 @@ class EntityDocumentAssociations(object):
             self.num_associations += 1
 
 
+class IdentityDocumentAssociations(object):
+
+    def __init__(self, document_ids):
+        self.entities = set(document_ids)
+
+        self.entities_per_document = {
+            document_id: set([document_id])
+            for document_id in self.entities
+        }
+
+        self.documents_per_entity = {
+            document_id: set([document_id])
+            for document_id in self.entities
+        }
+
+        self.max_entities_per_document = 1
+        self.num_associations = len(self.entities)
+
+
 def parse_topics(file_or_files,
                  max_topics=sys.maxsize, delimiter=';'):
     assert max_topics >= 0 or max_topics is None
@@ -642,6 +665,42 @@ class TRECRun(object):
                 for entity_id, score in self.data[subject_id].items()]
 
         write_run(model_name, data, out_f, max_objects_per_query)
+
+
+class OnlineTRECRun(object):
+
+    def __init__(self, name, rank_cutoff=sys.maxsize):
+        self.name = name
+        self.rank_cutoff = rank_cutoff
+
+        self.tmp_file = tempfile.NamedTemporaryFile(
+            mode='w', delete=False)
+
+        logging.info('Writing temporary run to %s.',
+                     self.tmp_file.name)
+
+    def add_ranking(self, subject_id, object_assesments):
+        assert self.tmp_file
+
+        write_run(self.name,
+                  data={subject_id: object_assesments},
+                  out_f=self.tmp_file,
+                  max_objects_per_query=self.rank_cutoff)
+
+    def close_and_write(self, out_path, overwrite=True):
+        assert self.tmp_file
+
+        if not overwrite:
+            assert not os.path.exists(out_path)
+        elif os.path.exists(out_path):
+            logging.warning('Overwriting run %s.', out_path)
+
+        tmp_file_path = self.tmp_file.name
+
+        self.tmp_file.close()
+        shutil.copy(tmp_file_path, out_path)
+
+        os.remove(tmp_file_path)
 
 
 def write_run(model_name, data, out_f,
