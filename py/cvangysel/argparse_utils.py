@@ -45,6 +45,16 @@ def existing_directory_path(value):
             '"{0}" is not a directory'.format(value))
 
 
+def nonexisting_directory_path(value):
+    value = str(value)
+
+    if not os.path.exists(value) and not os.path.isdir(value):
+        return value
+    else:
+        raise argparse.ArgumentTypeError(
+            '"{0}" already exists.'.format(value))
+
+
 def existing_file_path(value):
     value = str(value)
 
