@@ -11,6 +11,8 @@ package_root() {
 #
 
 # From http://stackoverflow.com/questions/3685970/check-if-an-array-contains-a-value.
+#
+# Usage: if [[ $(contains ${HAYSTACK[@]} ${NEEDLE}) == "y" ]]; then ...
 function contains() {
     local n=$#
     local value=${!n}
@@ -117,6 +119,31 @@ check_valid_option() {
 
         exit -1
     fi
+}
+
+#
+# String manipulation
+#
+
+join_strings() {
+    SEPARATOR="${1:-}"
+    check_not_empty "${SEPARATOR}" "separator"
+
+    shift
+
+    if [[ "$#" -eq "0" ]]; then
+        return
+    fi
+
+    echo -n "$1"
+    shift
+
+    for ELEMENT in $@; do
+        echo -n "${SEPARATOR}"
+        echo -n "${ELEMENT}"
+    done
+
+    echo
 }
 
 #
