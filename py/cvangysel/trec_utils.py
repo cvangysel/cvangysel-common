@@ -28,6 +28,7 @@ measures = {
     'ndcg_cut_100': 'NDCG@100',
     'recip_rank': 'MRR',
     'bpref': 'Bpref',
+    'Rprec': 'R-Precision',
     'recall_10': 'Recall@10',
 }
 
