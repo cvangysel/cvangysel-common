@@ -582,7 +582,7 @@ def parse_topics(file_or_files,
 
 
 def parse_trec_eval(f):
-    measure_re = re.compile(r'^([A-Za-z0-9_]+)\s+(.*)\s+([0-9\.e\-]+)$')
+    measure_re = re.compile(r'^([A-Za-z0-9_\-]+)\s+(.*)\s+([0-9\.e\-]+)$')
 
     trec_eval = collections.defaultdict(dict)
 
@@ -631,7 +631,7 @@ def compute_significance(first_trec_eval, second_trec_eval, measures):
 def parse_trec_run(f, return_score=False,
                    ignore_duplicates=False,
                    ignore_parse_errors=False):
-    run = collections.defaultdict(dict)
+    run = collections.defaultdict(collections.OrderedDict)
 
     for idx, line in enumerate(f):
         if not line.strip():  # Skip empty lines.
