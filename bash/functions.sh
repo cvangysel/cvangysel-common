@@ -51,6 +51,28 @@ check_eq() {
     fi
 }
 
+check_ne() {
+    check_not_empty "${1:-}" "first argument"
+    check_not_empty "${2:-}" "second argument"
+
+    if [[ "${1}" == "${2}" ]]; then
+        1>&2 echo "Value '${1}' is equal to '${2}'."
+
+        exit -1
+    fi
+}
+
+check_not_empty() {
+    check_not_empty "${1:-}" "first argument"
+    check_not_empty "${2:-}" "second argument"
+
+    if [[ "${1}" == "${2}" ]]; then
+        1>&2 echo "Value '${1}' is equal to '${2}'."
+
+        exit -1
+    fi
+}
+
 #
 # Integral.
 #
