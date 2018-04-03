@@ -628,6 +628,35 @@ def compute_significance(first_trec_eval, second_trec_eval, measures):
     return significance_results
 
 
+def parse_run(f_run, max_depth=None):
+    run = {}
+
+    current_query_id = None
+
+    for line in f_run:
+        query_id, _, object_id, ranking, score, _ = line.strip().split()
+        score = float(score)
+
+        if current_query_id != query_id:
+            assert query_id not in run
+            run[query_id] = {}
+
+            current_query_id = query_id
+            prev_min_score = np.inf
+        else:
+            assert score <= prev_min_score
+            prev_min_score = score
+
+        assert object_id not in run[query_id]
+
+        if max_depth and len(run[query_id]) >= max_depth:
+            continue
+
+        run[query_id][object_id] = score
+
+    return run
+
+
 def parse_trec_run(f, return_score=False,
                    ignore_duplicates=False,
                    ignore_parse_errors=False):
@@ -732,17 +761,22 @@ class OnlineTRECRun(object):
                       out_f=self.tmp_file,
                       max_objects_per_query=self.rank_cutoff)
 
-    def close_and_write(self, out_path, overwrite=True):
+    def close_and_return_temporary_path(self):
         assert self.tmp_file
 
+        tmp_file_path = self.tmp_file.name
+
+        self.tmp_file.close()
+
+        return tmp_file_path
+
+    def close_and_write(self, out_path, overwrite=True):
         if not overwrite:
             assert not os.path.exists(out_path)
         elif os.path.exists(out_path):
             logging.warning('Overwriting run %s.', out_path)
 
-        tmp_file_path = self.tmp_file.name
-
-        self.tmp_file.close()
+        tmp_file_path = self.close_and_return_temporary_path()
         shutil.copy(tmp_file_path, out_path)
 
         os.remove(tmp_file_path)

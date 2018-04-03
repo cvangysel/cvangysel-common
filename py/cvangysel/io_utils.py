@@ -603,13 +603,14 @@ def recursively_decode_html_entities(text):
 
 
 def strip_html(html, include_metatags=True):
+    assert isinstance(html, str)
+
     try:
         html = recursively_decode_html_entities(html)
     except:
-        e = sys.exc_info()[0]
-
         logging.warning(
-            'Exception during recursively_decode_html_entities: %s', e)
+            'Exception during recursively_decode_html_entities: %s',
+            sys.exc_info()[:2])
 
     try:
         soup = bs4.BeautifulSoup(html, 'lxml')

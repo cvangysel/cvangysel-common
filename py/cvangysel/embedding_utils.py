@@ -50,7 +50,21 @@ def load_binary_representations(filename, vocabulary=None):
                 last_reported_progress = progress
 
             while True:
-                char = words_and_representations.read(1).decode()
+                byte_buffer = b''
+                char = None
+
+                while True:
+                    byte_buffer += words_and_representations.read(1)
+
+                    try:
+                        char = byte_buffer.decode()
+                    except UnicodeDecodeError:
+                        continue
+
+                    break
+
+                assert char is not None
+
                 logging.debug("Reading character '{}'".format(char))
 
                 if char == ' ' or not char:
